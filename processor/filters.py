@@ -40,7 +40,7 @@ class ResizeFilter(FilterProcessor):
         buffer = []
         for img in ctx.get_buffer():
             if width and height:
-                target_size = (int(width), int(height))
+                target_size = (max(1, int(width)), max(1, int(height)))
             else:
                 if width:
                     scale_f = float(width) / img.width
@@ -51,7 +51,7 @@ class ResizeFilter(FilterProcessor):
                 else:
                     ctx.set("success", False)
                     return
-                target_size = (int(img.width * scale_f), int(img.height * scale_f))
+                target_size = (max(1, int(img.width * scale_f)), max(1, int(img.height * scale_f)))
 
             ret_img = img.resize(target_size, resample=Image.Resampling.LANCZOS)
             buffer.append(ret_img)
@@ -348,13 +348,24 @@ class WatermarkFilter(FilterProcessor):
         center_top_config = ctx.get("center_top")
         center_bottom_config = ctx.get("center_bottom")
 
+        # 底部文字区域的顶部和底部 Y 坐标（用于单行居中计算）
+        text_area_top = lt_y
+        text_area_bottom = lb_y + max(left_bottom.height, right_bottom.height)
+
         if center_top_config and isinstance(center_top_config, dict):
             if "height" not in center_top_config:
                 center_top_config["height"] = int(bottom_margin * .3)
             if str(center_top_config.get("text", "")).strip():
                 center_top_img = start_process([center_top_config])
                 ct_x = (canvas_width - center_top_img.width) // 2
-                canvas.paste(center_top_img, (ct_x, lt_y),
+                if center_bottom_config and isinstance(center_bottom_config, dict) \
+                        and str(center_bottom_config.get("text", "")).strip():
+                    # 两行：与 left_top 顶部对齐
+                    ct_y = lt_y
+                else:
+                    # 单行：在整个文字区域内垂直居中
+                    ct_y = (text_area_top + text_area_bottom - center_top_img.height) // 2
+                canvas.paste(center_top_img, (ct_x, ct_y),
                              mask=center_top_img if center_top_img.mode == 'RGBA' else None)
 
         if center_bottom_config and isinstance(center_bottom_config, dict):
