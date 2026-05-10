@@ -5,8 +5,20 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('./templates', './templates')],
-    hiddenimports=[],
+    datas=[
+        ('./templates', './templates'),
+    ],
+    hiddenimports=[
+        # 处理器模块（动态 importlib 导入，PyInstaller 静态分析检测不到）
+        'processor.filters',
+        'processor.generators',
+        'processor.mergers',
+        # 第三方库
+        'pillow_heif',
+        'jinja2',
+        'flask',
+        'loguru',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
