@@ -36,6 +36,16 @@
       "text": "{{(exif.DateTimeOriginal or exif.CreateDate or exif.DigitalCreationDate or exif.DateCreated or exif.DateTimeCreated or exif.DigitalCreationDateTime|default('0'))[:16]}}",
       "color": "#242424"
     },
+    "center_top": {
+      "processor_name": "rich_text",
+      "text": "{{ gps_safe(exif.GPSLatitude | default('')) }}",
+      "color": "#242424"
+    },
+    "center_bottom": {
+      "processor_name": "rich_text",
+      "text": "{{ gps_safe(exif.GPSLongitude | default('')) }}",
+      "color": "#242424"
+    },
     "right_logo": "{{auto_logo()|replace('\\', '/')}}",
     "color": "white",
     "delimiter_color": "#ffffff00",

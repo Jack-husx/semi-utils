@@ -344,6 +344,28 @@ class WatermarkFilter(FilterProcessor):
         canvas.paste(right_top, (rt_x, rt_y), mask=right_top if right_top.mode == 'RGBA' else None)
         canvas.paste(right_bottom, (rb_x, rb_y), mask=right_bottom if right_bottom.mode == 'RGBA' else None)
 
+        # 7. 居中文本处理（可选，例如 GPS 经纬度信息）
+        center_top_config = ctx.get("center_top")
+        center_bottom_config = ctx.get("center_bottom")
+
+        if center_top_config and isinstance(center_top_config, dict):
+            if "height" not in center_top_config:
+                center_top_config["height"] = int(bottom_margin * .3)
+            if str(center_top_config.get("text", "")).strip():
+                center_top_img = start_process([center_top_config])
+                ct_x = (canvas_width - center_top_img.width) // 2
+                canvas.paste(center_top_img, (ct_x, lt_y),
+                             mask=center_top_img if center_top_img.mode == 'RGBA' else None)
+
+        if center_bottom_config and isinstance(center_bottom_config, dict):
+            if "height" not in center_bottom_config:
+                center_bottom_config["height"] = int(bottom_margin * .3)
+            if str(center_bottom_config.get("text", "")).strip():
+                center_bottom_img = start_process([center_bottom_config])
+                cb_x = (canvas_width - center_bottom_img.width) // 2
+                canvas.paste(center_bottom_img, (cb_x, lb_y),
+                             mask=center_bottom_img if center_bottom_img.mode == 'RGBA' else None)
+
         # 右图标处理 (逻辑类推：放置在右边距内侧)
         if right_logo:
             # 先画一条分割线
