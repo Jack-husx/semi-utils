@@ -11,7 +11,8 @@ from flask import render_template, jsonify, request, send_file, Flask, Response,
 from core import CONFIG_PATH
 from core.configs import load_config, load_project_info
 from core.logger import logger, init_from_config
-from core.util import (list_files, log_rt, get_exif, convert_heic_to_jpeg, get_template, get_template_content,
+from core.util import (list_files, log_rt, get_exif, get_exif_batch,
+                       convert_heic_to_jpeg, get_template, get_template_content,
                        save_template, list_templates)
 from processor.core import start_process
 
@@ -171,6 +172,16 @@ def handle_process():
 
     total_count = len(input_files)
 
+    # 绝对路径，避免 Windows 下 ./output\xxx 混用斜杠或相对路径导致 Errno 22
+    root_in = Path(input_folder).expanduser()
+    root_in = (Path.cwd() / root_in).resolve() if not root_in.is_absolute() else root_in.resolve()
+    root_out = Path(output_folder).expanduser()
+    root_out = (Path.cwd() / root_out).resolve() if not root_out.is_absolute() else root_out.resolve()
+
+    # 批量预读所有文件的 EXIF（只启动一次 Perl 进程，避免多进程并发崩溃）
+    logger.info(f'批量读取 {total_count} 个文件的 EXIF...')
+    exif_cache = get_exif_batch(input_files)
+
     @log_rt
     def process_single_file(input_path):
         """处理单个文件，返回 (success, skipped, error_message)"""
@@ -178,10 +189,13 @@ def handle_process():
             return False, False, f"文件不存在: {input_path}"
 
         try:
-            # 获取 input_path 相对 input_folder 的位置
-            relative_path = os.path.relpath(input_path, input_folder)
-            # 基于 output_folder 组装出输出路径 output_path
-            output_path = os.path.join(output_folder, relative_path)
+            inp_abs = Path(input_path).expanduser()
+            inp_abs = (Path.cwd() / inp_abs).resolve() if not inp_abs.is_absolute() else inp_abs.resolve()
+            try:
+                rel = inp_abs.relative_to(root_in)
+            except ValueError:
+                rel = Path(inp_abs.name)
+            output_path = str((root_out / rel).resolve())
 
             # 如果路径不存在, 那么递归创建文件夹
             output_dir = os.path.dirname(output_path)
@@ -193,9 +207,10 @@ def handle_process():
                 return False, True, None
 
             _input_path = Path(input_path)
-            # 开始处理
+            exif = exif_cache.get(input_path) or exif_cache.get(str(_input_path.resolve()), {})
+            # 使用预读的 EXIF 缓存，不再单独启动 Perl 进程
             context = {
-                'exif': get_exif(input_path),
+                'exif': exif,
                 'filename': _input_path.stem,
                 'file_dir': str(_input_path.parent.absolute()).replace('\\', '/'),
                 'file_path': str(_input_path).replace('\\', '/'),
@@ -262,7 +277,8 @@ def handle_process():
         })
 
         # 使用线程池并发处理
-        max_workers = min(4, total_count)  # 最多 4 个线程
+        # 大图处理内存峰值高，并发数过高易 OOM；2 线程更稳
+        max_workers = min(2, max(1, total_count))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 提交所有任务
             futures = {executor.submit(worker, f): f for f in input_files}

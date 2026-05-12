@@ -61,6 +61,11 @@ class ResizeFilter(FilterProcessor):
         return "resize"
 
 
+# 裁剪白边时若整图转 float32，全景图（如 9000+ 像素宽）会占用数百 MB 导致分配失败。
+# 先在缩小后的副本上计算 bbox，再按比例映射回原图坐标。
+_TRIM_MAX_EDGE = 2048
+
+
 class TrimFilter(FilterProcessor):
     threshold: float = 10.0,
     padding: int = 0
@@ -140,11 +145,19 @@ class TrimFilter(FilterProcessor):
             trim_top: bool = True,
             trim_bottom: bool = True,
     ) -> Tuple[int, int, int, int]:
-        img_array = np.array(image, dtype=np.float32)
+        ow, oh = image.size
+        max_dim = max(ow, oh)
+        if max_dim > _TRIM_MAX_EDGE:
+            scale = _TRIM_MAX_EDGE / max_dim
+            w = max(1, int(ow * scale))
+            h = max(1, int(oh * scale))
+            work = image.resize((w, h), Image.Resampling.BILINEAR)
+        else:
+            scale = 1.0
+            w, h = ow, oh
+            work = image
 
-        # 处理灰度图（2D → 3D）
-        if img_array.ndim == 2:
-            img_array = img_array[:, :, np.newaxis]
+        img_array = np.asarray(work.convert('RGB'), dtype=np.float32)
 
         height, width, channels = img_array.shape
 
@@ -170,6 +183,14 @@ class TrimFilter(FilterProcessor):
         top = max(0, top - padding)
         right = min(width, right + padding)
         bottom = min(height, bottom + padding)
+
+        # 映射回原图坐标
+        if scale < 1.0:
+            inv = 1.0 / scale
+            left = int(left * inv)
+            right = min(ow, int(round(right * inv)))
+            top = int(top * inv)
+            bottom = min(oh, int(round(bottom * inv)))
 
         return left, top, right, bottom
 
@@ -336,6 +357,17 @@ class WatermarkFilter(FilterProcessor):
         rb_x = right_content_end_x - right_bottom.width - common_spacing  # 右对齐计算
         if Alignment.LEFT == right_alignment:
             rt_x = rb_x = min(rt_x, rb_x)
+
+        # 竖版或 GPS 文案过长时，右侧日期可能与左侧经纬度水平重叠 → 日期换到 GPS 下方
+        left_text_right = l_x + left_top.width + common_spacing
+        if rt_x < left_text_right:
+            rt_x = canvas_width - right_margin - right_top.width - common_spacing
+            rt_y = min(
+                lt_y + left_top.height + max(4, middle_spacing),
+                canvas_height - right_top.height - max(2, elem_margin // 2),
+            )
+            rb_x = canvas_width - right_margin - right_bottom.width - common_spacing
+            rb_y = (lb_y + left_bottom.height) - right_bottom.height
 
         # 6. 绘制文本元素
         # 使用 mask 确保透明背景的文字能正确叠加
