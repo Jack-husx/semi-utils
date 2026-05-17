@@ -217,12 +217,18 @@ def handle_process():
                 'files': input_files
             }
             final_template = template.render(context)
-            start_process(json.loads(final_template), input_path, output_path=output_path)
+            start_process(
+                json.loads(final_template),
+                input_path,
+                output_path=output_path,
+                exif=context['exif'],
+            )
             return True, False, None
 
         except Exception as e:
-            logger.error(f"处理文件失败 {input_path}: {e}")
-            return False, False, str(e)
+            msg = str(e) or repr(e)
+            logger.exception(f"处理文件失败 {input_path}: {msg}")
+            return False, False, msg
 
     def generate():
         """生成 SSE 事件流 - 使用多线程处理"""
@@ -277,8 +283,8 @@ def handle_process():
         })
 
         # 使用线程池并发处理
-        # 大图处理内存峰值高，并发数过高易 OOM；2 线程更稳
-        max_workers = min(2, max(1, total_count))
+        # 大图 + 阴影/模糊时内存峰值高；大批量时单线程更稳
+        max_workers = 1 if total_count > 80 else min(2, max(1, total_count))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 提交所有任务
             futures = {executor.submit(worker, f): f for f in input_files}

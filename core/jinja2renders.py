@@ -58,3 +58,25 @@ def gps_display(value):
     ):
         return ''
     return s
+
+
+def _shorten_gps_floats(s: str) -> str:
+    """将过长的小数秒压到 2 位，避免一行撑满后与右侧日期重叠。"""
+    def repl(m):
+        try:
+            return f"{float(m.group(0)):.2f}"
+        except ValueError:
+            return m.group(0)
+
+    return re.sub(r"\d+\.\d{4,}", repl, s)
+
+
+def gps_wrap(value):
+    """水印用：在 gps_display 基础上缩短小数，并在纬度与经度之间插入换行。"""
+    s = gps_display(value)
+    if not s:
+        return ""
+    s = _shorten_gps_floats(s)
+    if re.search(r"[NS]\s*[,，]\s*\d", s, re.I):
+        s = re.sub(r"([NS])\s*[,，]\s*(?=\d)", r"\1,\n", s, count=1, flags=re.I)
+    return s

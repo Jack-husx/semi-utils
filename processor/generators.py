@@ -1,3 +1,4 @@
+import math
 import os.path
 import sys
 from abc import ABC
@@ -199,12 +200,25 @@ class RichTextGenerator(Generator):
         # 获取文本尺寸
         metrics = font.getmetrics()
         text = ' ' if not segment.text or segment.text == '' else segment.text
-        bbox = font.getbbox(text)
-        # 创建透明画布
-        image = Image.new('RGBA', (int(bbox[2] - bbox[0]), metrics[0] + abs(metrics[1])), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(image)
-        # 直接绘制文本
-        draw.text((0, 0), text, font=font, fill=_parse_color(segment.color))
+        fill = _parse_color(segment.color)
+        dummy = Image.new('RGBA', (4, 4), (0, 0, 0, 0))
+        d = ImageDraw.Draw(dummy)
+        line_gap = max(2, int((segment.height or 24) * 0.1))
+
+        if '\n' in text:
+            bbox = d.multiline_textbbox((0, 0), text, font=font, spacing=line_gap)
+            w = max(1, int(math.ceil(bbox[2] - bbox[0])))
+            h = max(1, int(math.ceil(bbox[3] - bbox[1])))
+            image = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
+            ox, oy = -int(bbox[0]), -int(bbox[1])
+            draw.multiline_text((ox, oy), text, font=font, fill=fill, spacing=line_gap)
+        else:
+            bbox = font.getbbox(text)
+            # 创建透明画布
+            image = Image.new('RGBA', (int(bbox[2] - bbox[0]), metrics[0] + abs(metrics[1])), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
+            draw.text((0, 0), text, font=font, fill=fill)
 
         # 使用 start_process 处理图片，解耦对 Filter 的直接依赖
         pipeline = [

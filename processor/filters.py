@@ -86,12 +86,12 @@ class TrimFilter(FilterProcessor):
         return "trim"
 
     def _get_background_color(self, img_array: np.ndarray) -> np.ndarray:
-        """取四角像素均值作为背景色"""
+        """取四角像素均值作为背景色（支持 uint8 / float）。"""
         corners = np.array([
-            img_array[0, 0],  # 左上角
-            img_array[0, -1],  # 右上角
-            img_array[-1, 0],  # 左下角
-            img_array[-1, -1]  # 右下角
+            img_array[0, 0],
+            img_array[0, -1],
+            img_array[-1, 0],
+            img_array[-1, -1]
         ])
         return np.mean(corners, axis=0)
 
@@ -157,15 +157,16 @@ class TrimFilter(FilterProcessor):
             w, h = ow, oh
             work = image
 
-        img_array = np.asarray(work.convert('RGB'), dtype=np.float32)
-
-        height, width, channels = img_array.shape
+        img_array = np.asarray(work.convert('RGB'), dtype=np.uint8)
+        height, width, _ = img_array.shape
 
         # ===== 第一步：取四角像素均值作为背景色 =====
         background_color = self._get_background_color(img_array)
 
-        # ===== 第二步：计算每个像素与背景的差异 =====
-        diff = np.sqrt(np.sum((img_array - background_color) ** 2, axis=-1))
+        # ===== 第二步：计算每个像素与背景的差异（避免整图 float32 RGB 占内存）=====
+        bg_i = background_color.reshape(1, 1, 3).astype(np.int32)
+        d = img_array.astype(np.int32) - bg_i
+        diff = np.sqrt((d * d).sum(axis=2, dtype=np.float64)).astype(np.float32)
 
         # ===== 第三步：从四个方向向内扫描，收缩边界框 =====
         left, right, top, bottom = self._shrink_bbox(diff, threshold, width, height)
@@ -501,10 +502,17 @@ class ShadowFilter(FilterProcessor):
             else:
                 original_img = img
             w, h = original_img.size
-            if shadow_radius <= 0:
+            # 超大图 + 大半径阴影时 PIL 模糊内存极高，自动限制模糊半径
+            megapixels = (w * h) / 1_000_000.0
+            eff_radius = shadow_radius
+            if megapixels > 35:
+                eff_radius = min(shadow_radius, 20)
+            elif megapixels > 20:
+                eff_radius = min(shadow_radius, 35)
+            if eff_radius <= 0:
                 buffer.append(img)
                 continue
-            padding = int(shadow_radius * 2)
+            padding = int(eff_radius * 2)
             full_width = w + padding * 2
             full_height = h + padding * 2
             # 1. 生成剪影阴影
@@ -513,7 +521,7 @@ class ShadowFilter(FilterProcessor):
             shadow_layer.putalpha(original_img.getchannel('A'))
             background.paste(shadow_layer, (padding, padding))
             # 2. 高斯模糊
-            shadow_blurred = background.filter(ImageFilter.GaussianBlur(shadow_radius))
+            shadow_blurred = background.filter(ImageFilter.GaussianBlur(eff_radius))
             # 3. 关键：应用透明度衰减曲线，消除边缘残留
             shadow_blurred = self._apply_alpha_falloff(shadow_blurred, falloff)
             # 4. 合成原图

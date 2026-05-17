@@ -263,7 +263,13 @@ def register_processor(key: str, processor_cls: Type['ImageProcessor']):
     logger.debug(f"Registered processor: {key} -> {processor_cls.__name__}")
 
 
-def start_process(data: List[dict], input_path: str = None, output_path: str = None, initial_buffer: List = None):
+def start_process(
+    data: List[dict],
+    input_path: str = None,
+    output_path: str = None,
+    initial_buffer: List = None,
+    exif: Optional[Dict[str, Any]] = None,
+):
     """
     执行处理管道
 
@@ -272,6 +278,7 @@ def start_process(data: List[dict], input_path: str = None, output_path: str = N
         input_path: 输入文件路径
         output_path: 输出文件路径
         initial_buffer: 初始图像缓冲区（可选，用于不从文件加载的情况）
+        exif: 已读取的 EXIF 字典；传入时不再调用 ExifTool（批量任务推荐）
     """
     nodes = [PipelineContext(datum) for datum in data]
 
@@ -282,12 +289,16 @@ def start_process(data: List[dict], input_path: str = None, output_path: str = N
     elif input_path is not None:
         nodes[0].set("buffer_path", [input_path])
 
-    # 填充 exif 信息
-    if input_path is not None:
-        exif = get_exif(input_path)
-        for node in nodes:
-            if 'exif' not in node:
-                node['exif'] = exif
+    # 填充 exif：优先使用调用方传入的缓存（避免批量任务里每张图再跑 ExifTool）
+    if exif is not None:
+        exif_data = exif
+    elif input_path is not None:
+        exif_data = get_exif(input_path)
+    else:
+        exif_data = {}
+    for node in nodes:
+        if 'exif' not in node:
+            node['exif'] = exif_data
 
     # 所有处理器的输出, 0 被看作是头元素的输出
     output = nodes[0].get_buffer()

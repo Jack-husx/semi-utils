@@ -13,7 +13,7 @@ from PIL import Image, ExifTags
 from jinja2 import Template
 
 from core.configs import templates_dir
-from core.jinja2renders import vh, vw, auto_logo, gps_safe, gps_display
+from core.jinja2renders import vh, vw, auto_logo, gps_safe, gps_display, gps_wrap
 from core.logger import logger
 
 if platform.system() == 'Windows':
@@ -397,6 +397,7 @@ def get_template(template_name: str) -> Template:
     template.globals['auto_logo'] = auto_logo
     template.globals['gps_safe'] = gps_safe
     template.globals['gps_display'] = gps_display
+    template.globals['gps_wrap'] = gps_wrap
     return template
 
 

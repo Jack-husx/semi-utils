@@ -11,7 +11,7 @@
   {
     "left_top": {
       "processor_name": "rich_text",
-      "text": "{{ gps_display((exif.GPSPosition or ((exif.GPSLatitude or '') ~ '  ' ~ (exif.GPSLongitude or ''))) | default('')) }}",
+      "text": {{ (gps_wrap((exif.GPSPosition or ((exif.GPSLatitude or '') ~ '  ' ~ (exif.GPSLongitude or ''))) | default(''))) | tojson }},
       "font_path": "AlibabaPuHuiTi-2-85-Bold.otf",
       "is_bold": true,
       "color": "#242424",
